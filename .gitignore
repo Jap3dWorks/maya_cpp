@@ -9,5 +9,6 @@
 /ipch
 *VC.db
 *VC.opendb
+.examples/
 *.vcxproj.user
 *.sln
