@@ -100,12 +100,71 @@ static float vector_magnitude(const float3 vector)
     return sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
 }
 
-void print_string(std::string holi)
+template<typename T>
+T& pas_ref(T& ref_int)
 {
-    std::cout << holi << std::endl;
+    return ref_int;
 }
+
+struct s_struct
+{
+    int val{ 8 };
+};
+
+struct tst_strc {
+    int attr{ 4 };
+
+    s_struct attr2;
+
+    float3 attr3{ 1.f, 2.f, 3.f };
+
+    int& get_attr()
+    {
+        return attr;
+    }
+
+    s_struct& get_attr2()
+    {
+        return attr2;
+    }
+
+    float3& get_attr3()
+    {
+        return attr3;
+    }
+
+};
 
 int main()
 {
-    print_string(holi="holi");
+    int a = 8;
+
+    int& b = pas_ref(a);
+
+    a += 8;
+
+    std::cout << b << std::endl;
+    
+    std::cout << &a << std::endl;
+    std::cout << &b << std::endl;
+
+    tst_strc st;
+    int& g = st.get_attr();
+    s_struct& k = st.get_attr2();
+
+
+    g += 16;
+    k.val += 160;
+
+    std::cout << st.attr << std::endl;
+    std::cout << st.attr2.val << std::endl;
+    std::cout << st.get_attr3() << std::endl;
+    std::cout << st.attr3 << std::endl;
+
+    float3& f3at = st.get_attr3();
+    std::cout << f3at << std::endl;
+
+    float arraytst[3] = { 1.f, 2.f, 3.f };
+    std::cout << arraytst << std::endl;
+
 }

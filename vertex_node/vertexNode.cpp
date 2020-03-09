@@ -47,10 +47,6 @@ void* VertexNode::creator()
 
 MStatus VertexNode::initialize()
 {
-
-    //cerr << "initialize vertex node" << endl;
-    MGlobal::displayInfo("initialize vertex node.\n");
-
     MStatus state;
 
     MFnTypedAttribute mAttr;
@@ -139,66 +135,40 @@ bool VertexNode::isPassiveOutput(const MPlug& plug) const
 
 MStatus VertexNode::compute(const MPlug& plug, MDataBlock& data)
 {
-    //cerr << "compute" << endl << flush;
-    MGlobal::displayInfo("Compute method.");
-
     MStatus status = MS::kUnknownParameter;
     if (plug != aOutput)
     {
         return  status;
     }
 
-    MObject thisNode = this->thisMObject();
-
-    /*
-    if (plug.isArray())
-    {
-
-    }
-    */
-
     // get inputs
     const MDataHandle& mesh_handle = data.inputValue(aInputMesh);
-    const MObject& mesh_shape = mesh_handle.asMesh();
+    if (mesh_handle.type() != MFnData::kMesh)
+    {
+        return MS::kInvalidParameter;
+    }
+
+    const MObject mesh_shape = mesh_handle.asMesh();
+
+    MFnMesh fnMesh(mesh_shape);
 
     const float3& position = data.inputValue(aPoint).asFloat3();
     const float3& vector = data.inputValue(aVector).asFloat3();
 
-    MArrayDataHandle& output_array = data.outputArrayValue(aOutput);
-    MArrayDataBuilder& output_builder = output_array.builder();
-
-    if (mesh_handle.type() == MFnData::kMesh)
-    {
-        MGlobal::displayInfo("Input mesh is a mesh.");
-    }
+    MArrayDataHandle output_array = data.outputArrayValue(aOutput);
+    MArrayDataBuilder output_builder = output_array.builder(&status);
+    CHECK_MSTATUS(status);
 
     MFloatPoint ray_position(position[0], position[1], position[2]);
     MFloatVector ray_direction(vector[0], vector[1], vector[2]);
-    
-    MFnMesh fnMesh;
-    fnMesh.setObject(mesh_shape);
-
-    // prnt all point positions
-    MPointArray p_array;
-    fnMesh.getPoints(p_array, MSpace::kWorld);
-    for (unsigned int i=0; i < p_array.length(); ++i)
-    {
-        std::string output_string = std::to_string(p_array[i].x) + " " +
-            std::to_string(p_array[i].y) + " " +
-            std::to_string(p_array[i].z);
-
-        MGlobal::displayInfo(output_string.c_str());
-    }
 
     // output array builder
     unsigned int num_verts = fnMesh.numVertices();
 
     for (unsigned int i = 0; i < num_verts; ++i)
     {
-        MDataHandle& outHandle = output_builder.addElement(i);
-        //output_array.jumpToElement(i);
+        MDataHandle outHandle = output_builder.addElement(i);
         outHandle.set(0.f);
-        //output_array.outputValue().set(0.f);
     }
 
     MIntArray faceIds;
@@ -209,29 +179,16 @@ MStatus VertexNode::compute(const MPlug& plug, MDataBlock& data)
     int hitFace, hitTriangle;
     float bary1, bary2;
 
-    //MGlobal::displayInfo(fnMesh.name());
-    MGlobal::displayInfo((std::to_string(ray_position.x) + " " +
-        std::to_string(ray_position.y) + " " +
-        std::to_string(ray_position.z)).c_str()
-    );
-    
-    MGlobal::displayInfo((std::to_string(ray_direction.x) + " " +
-        std::to_string(ray_direction.y) + " " +
-        std::to_string(ray_direction.z)).c_str()
-    );
-
-    MGlobal::displayInfo(std::to_string(fnMesh.numPolygons()).c_str());
-
     bool intersects = fnMesh.closestIntersection(
         ray_position, 
         ray_direction, 
-        NULL, 
-        NULL,
+        nullptr, 
+        nullptr,
         true, 
         MSpace::kWorld,
-        10.f,
+        99.f,
         false,
-        NULL,
+        &mmAccelParams,
         hitPoint,
         &hitRayParam,
         &hitFace,
@@ -241,18 +198,8 @@ MStatus VertexNode::compute(const MPlug& plug, MDataBlock& data)
         1e-6,
         &status);
 
-    MGlobal::displayInfo(("face " + std::to_string(hitFace)).c_str());
-
-    //CHECK_MSTATUS(status);    
-    if (status == MS::kSuccess)
-    {
-        MGlobal::displayInfo("Intersection works correctly");
-    }
-    //MMeshIntersector intersector;
-    //intersector.create(mesh_shape);
     if (intersects)
     {
-        MGlobal::displayInfo("get an intersection.");
         // get vertex ids
         int3 vertex_id;
         fnMesh.getPolygonTriangleVertices(hitFace, hitTriangle, vertex_id);
@@ -278,17 +225,13 @@ MStatus VertexNode::compute(const MPlug& plug, MDataBlock& data)
 
         for (unsigned int i = 0; i < 3; i++)
         {
-            MDataHandle& data_handle = output_builder.addElement(vertex_id[i]);
+            MDataHandle data_handle = output_builder.addElement(vertex_id[i]);
             data_handle.set(vector_weight[i]);
-            // set output array attribute
-            //output_array.jumpToElement(vertex_id[i]);  // attribute id
-            //output_array.outputValue().setFloat(vector_weight[i]);  // attribute value
-            // all rest of attributes must be 0.f
         }
     }
     else
     {
-        MGlobal::displayInfo("No intersection found\n");
+        //MGlobal::displayInfo("No intersection found\n");
     }
 
     output_array.set(output_builder);
