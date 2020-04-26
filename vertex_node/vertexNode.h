@@ -55,6 +55,7 @@ public:
     static MObject aPointY;
     static MObject aPointZ;
 
+
     static MObject aVector;
     static MObject aVectorX;
     static MObject aVectorY;

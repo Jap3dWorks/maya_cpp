@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <string>
+#include <bitset>
+#include <memory>
 
 
 typedef float float3[3];
@@ -135,36 +137,111 @@ struct tst_strc {
 
 };
 
+enum class my_flags : char
+{
+    success = 0x00,
+    flag_1 = 0x01,
+    flag_2 = 0x02,
+    flag_3 = 0x04,
+    flag_4 = 0x08,
+    flag_5 = 0x10,
+    flag_6 = 0x20,
+    flag_7 = 0x40,
+    flag_8 = 0x80,
+
+};
+
+my_flags operator|(const my_flags& a, const my_flags& b)
+{
+    return static_cast<my_flags>(static_cast<char>(a) | static_cast<char>(b));
+}
+
+my_flags operator&(const my_flags& a, const my_flags& b)
+{
+    return static_cast<my_flags>(static_cast<char>(a) & static_cast<char>(b));
+}
+
+struct MyStruct
+{
+    std::string attribute1;
+};
+
+#define MacroTest(attr, message)        \
+    struky. attr = message;
+
+const short& get_reference()
+{
+    short value{ 10 };
+    std::cout << &value << std::endl;
+    return value;
+}
+
+// return an array
+std::unique_ptr<int[]> get_array(int size)
+{
+    std::unique_ptr<int[]> ptr(new int[size]);
+    return ptr;
+}
+
+
+int param_func(int i)
+{
+    return i + 1;
+}
+
+//
+//int param_func(int i)
+//{
+//    return i;
+//}
+
+int wrapper(int __cdecl pepe(int))
+{
+    return pepe(8);
+}
+
+int wrapper2(void* func)
+{
+    int (* nf) (int) = (int(*) (int))(func);
+
+    std::cout << nf(3) << std::endl;
+    return 0;
+}
+
 int main()
 {
-    int a = 8;
+   
+    std::cout << param_func << std::endl;
+    std::cout << param_func << std::endl;
 
-    int& b = pas_ref(a);
-
-    a += 8;
-
-    std::cout << b << std::endl;
-    
-    std::cout << &a << std::endl;
-    std::cout << &b << std::endl;
-
-    tst_strc st;
-    int& g = st.get_attr();
-    s_struct& k = st.get_attr2();
+    std::cout << typeid(param_func).name() << std::endl;
 
 
-    g += 16;
-    k.val += 160;
+    std::cout << wrapper(param_func) << std::endl;
 
-    std::cout << st.attr << std::endl;
-    std::cout << st.attr2.val << std::endl;
-    std::cout << st.get_attr3() << std::endl;
-    std::cout << st.attr3 << std::endl;
+    void* func = static_cast<void*>(&param_func);
 
-    float3& f3at = st.get_attr3();
-    std::cout << f3at << std::endl;
+    wrapper2(func);
 
-    float arraytst[3] = { 1.f, 2.f, 3.f };
-    std::cout << arraytst << std::endl;
 
+    //int size = 19;
+    //get_array(size);
+
+    //std::unique_ptr<int[]> ptr = get_array(size);
+
+    //for (int i = 0; i < size; ++i)
+    //{
+    //    ptr[i] = i;
+    //}
+
+    //for (int i = 0; i < size; ++i)
+    //{
+    //    std::cout << ptr[i] << std::endl;
+    //}
+
+/*
+    for (auto& val : ptr)
+    {
+        std::cout << val << std::endl;
+    }*/
 }

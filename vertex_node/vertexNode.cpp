@@ -42,7 +42,7 @@ MObject VertexNode::aVectorZ;
 
 void* VertexNode::creator()
 {
-    return new VertexNode();
+    return new VertexNode;
 }
 
 MStatus VertexNode::initialize()
