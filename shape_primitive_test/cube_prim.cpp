@@ -1,5 +1,6 @@
 #include "cube_prim.h"
 #include <maya/MPoint.h>
+#include <algorithm>
 
 #define McheckErr(stat, msg)    \
     if (MS::kSuccess != stat){  \
@@ -192,6 +193,9 @@ void CubePrim::_build_vertex_array()
 {
     _vertex_array.clear();
 
+    int xz_inner_vtx = _subdivision[2] * _subdivision[0];
+    int xz_outhrt_vtx = 4 + _subdivision[0] * 2 + _subdivision[2] * 2;
+
     int face_vertex = 4 + _subdivision[0] * 2 + _subdivision[2] * 2 + _subdivision[0] * _subdivision[2];
 
     double x_initial_val = - _size[0] / 2.0;
@@ -202,49 +206,164 @@ void CubePrim::_build_vertex_array()
     double y_increments = _size[1] / (_subdivision[1] + 1);
     double z_increments = _size[2] / (_subdivision[2] + 1);
 
-    // bottom and top face vertex
-    for (unsigned int i = 0; i < 2; ++i) 
+    unsigned int i, j;
+
+    // bottom face grid points
+    _fill_grid_points(_vertex_array, _subdivision[0], _subdivision[2], x_increments, z_increments, 
+        (-_size[0]/2.f) + x_increments, (-_size[2]/2.f) + z_increments, -_size[1]/2.f);
+    // side points
+    _fill_side_points(_vertex_array, _subdivision[0], _subdivision[2], _subdivision[1], 
+        x_increments, z_increments, y_increments, -(_size[0] / 2.f), -(_size[2] / 2.f), -(_size[1] / 2.f));
+    // top face grid points
+    _fill_grid_points(_vertex_array, _subdivision[0], _subdivision[2], x_increments, z_increments,
+        (-_size[0] / 2.f) + x_increments, (-_size[2] / 2.f) + z_increments, _size[1] / 2.f);
+}
+
+// TODO:: return status
+static void _fill_side_points(
+    MFloatPointArray& point_array, const int& x_sub, const int& z_sub, const int& y_sub,
+    const float& x_incr, const float& z_incr, const float& y_incr, const float& x_offset, 
+    const float& z_offset, const float& y_offset)
+{
+    float x_max_value = (x_incr * (x_sub + 1)) + x_offset;
+    float z_max_value = (z_incr * (z_sub + 1)) + z_offset;
+
+    unsigned int i = 0, j = 0;
+    for (j = 0; j <= y_sub+1; ++j)
     {
-        for (unsigned int j = 0; j < face_vertex; ++j)
+        float y_current_value = (y_incr * j) + y_offset;
+
+        // x row
+        for (i = 0; i <= x_sub; ++i)
         {
-            _vertex_array.append(
-                MPoint(x_initial_val + (x_increments * (j % (_subdivision[0] + 2))),
-                       y_initial_val + (_size[1] * j),
-                       z_initial_val + (z_increments * (j / (_subdivision[0] + 2)))
-                ));
-        }
-    }
-    
-    // middle vertex
-    // top face vertex
-    for (unsigned int i = 0; i < _subdivision[1]; ++i)
-    {
-        double y_floor_val = y_initial_val + (y_increments * (i + 1));
-
-        for (unsigned int j = 0; j < _subdivision[0] + 2; ++j) {
-            _vertex_array.append(MPoint(
-                x_initial_val + (x_increments * j),
-                y_floor_val,
-                z_initial_val));
+            point_array.append(MPoint(
+                (x_incr * i) + x_offset,
+                y_current_value,
+                z_offset));
         }
 
-        for (unsigned int j = 0; j < _subdivision[2] * 2; ++j)
+        // z row
+        for (i = 0; i <= z_sub; ++i)
         {
-            _vertex_array.append(
-                MPoint(x_initial_val + (_size[0] * (i % 2)),
-                    y_floor_val,
-                    z_initial_val + (z_increments * (i / 2))
-                ));
+            point_array.append(MPoint(
+                x_incr * (x_sub + 1),
+                y_current_value,
+                (z_incr * i) + z_offset));
         }
 
-        for (unsigned int j = 0; j < _subdivision[0] + 2; ++j) {
-            _vertex_array.append(MPoint(
-                x_initial_val + (x_increments * j),
-                y_floor_val,
-                - z_initial_val));
+        // -x row
+        for (i = 0; i <= x_sub; ++i)
+        {
+            point_array.append(MPoint(
+                x_max_value - (x_incr * i),
+                y_current_value,
+                z_max_value
+            ));
+        }
+
+        // -z row
+        for (i = 0; i <= z_sub; ++i)
+        {
+            point_array.append(MPoint(
+                x_offset,
+                y_current_value,
+                z_max_value - (z_incr * i)
+            ));
         }
     }
 }
+
+// TODO:: return status
+static void _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
+    const float& x_incr, const float& z_incr, 
+    const float& x_offset, const float& z_offset, const float& y_offset,
+    bool** visited_points, int2 pos, int2 dir)
+{
+    if (visited_points[pos[0]][pos[1]])
+    {
+        return;
+    }
+
+    // add point
+    point_array.append(MPoint(
+        (x_incr * pos[0]) + x_offset,
+        y_offset,
+        (z_incr * pos[1]) + z_offset));
+
+    int next_x = pos[0] + dir[0];
+    int next_z = pos[1] + dir[1];
+
+    // if next point is visited yet or it is out of margins, change direction
+    if (visited_points[next_x][next_z] ||
+        next_x > x_sub - 1 || next_x < 0 ||
+        next_z > z_sub - 1 || next_z < 0)
+        // change direction
+        if (dir[0] > 0 && dir[1] == 0) {
+            dir[0] = 0; dir[1] == 1;
+        }
+        else if (dir[0] == 0 && dir[1] > 0) {
+            dir[0] = -1; dir[1] = 0;
+        }
+        else if (dir[0] < 0 && dir[1] == 0) {
+            dir[0] = 0; dir[1] = -1;
+        }
+        else {
+            dir[0] = 1; dir[1] = 0;
+        }
+    }
+
+    // set current point as visited
+    visited_points[pos[0]][pos[1]] = true;
+
+    // update pos
+    pos[0] += dir[0];
+    pos[1] += dir[1];
+
+    _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, 
+        x_offset, z_offset, y_offset,
+        visited_points, pos, dir);
+}
+
+/*Overload implementation to intialize default arguments*/
+static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
+    const float& x_incr, const float& z_incr,
+    const float& x_offset, const float& z_offset, const float& y_offset)
+{
+    int2 pos, dir;
+    pos[0] = pos[1] = 0;
+    dir[0] = 1; dir[1] = 0; // check first direction take in account subdivisions
+
+    if (!(x_sub * z_sub))
+    {
+        return MS::kSuccess;
+    }
+
+    MStatus stat = MS::kSuccess;
+    // create points int array
+    bool** visited_points = new bool*[x_sub];
+    for (unsigned int i = 0; i < z_sub; ++i) visited_points[i] = new bool[z_sub] {false};
+    
+    try
+    { 
+        _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, x_offset, z_offset, y_offset, visited_points, pos, dir);
+    }
+    catch (...)
+    {
+        std::cout << "ERROR at calculate grid points positions";
+        stat = MS::kFailure;
+    }
+
+    // set free visited points pointers
+    for (unsigned int i = 0; i < z_sub; ++i)
+    {
+        delete[] visited_points[i];
+    }
+
+    delete[] visited_points;
+
+    return stat;
+}
+
 
 void CubePrim::_build_connection_array()
 {
