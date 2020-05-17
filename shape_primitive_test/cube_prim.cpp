@@ -160,19 +160,106 @@ MStatus CubePrim::compute(const MPlug& plug, MDataBlock& data)
     return MS::kSuccess;
 }
 
+void CubePrim::_clear_buffers()
+{
+    if (!_buffers_initialized) return;
+
+    unsigned int i;
+    // bottom buffer
+    for (const auto& buffer : { bottom_grid_id, upper_grid_id })
+    {
+        for (i = 0; i < _sub_z + 2; ++i) 
+        {
+            delete[] buffer[i];
+            buffer[i] = nullptr;
+        };
+        delete[] buffer;
+    }
+    
+    // front, back, left, right buffers
+    for (const auto& buffer : { front_grid_id, back_grid_id,
+                                left_grid_id, right_grid_id })
+    {
+        for (i = 0; i < _sub_y + 2; ++i) 
+        {
+            delete[] buffer[i];
+            buffer[i] = nullptr;
+        };
+        delete[] buffer;
+    }
+
+    // assing nullptr to each buffer
+    bottom_grid_id = nullptr;
+    front_grid_id = nullptr;
+    back_grid_id = nullptr;
+    left_grid_id = nullptr;
+    right_grid_id = nullptr;
+    upper_grid_id = nullptr;
+
+    _buffers_initialized = false;
+}
+
+void CubePrim::_build_buffers()
+{
+    if (_buffers_initialized) return;
+
+    unsigned int i = 0;
+    
+    // bottom buffer
+    bottom_grid_id = new unsigned int*[2 + _sub_z];
+    for (i = 0; i < _sub_z + 2 ; ++i)
+    {
+        bottom_grid_id[i] = new unsigned int[_sub_x + 2];
+    }
+    // upper buffer
+    upper_grid_id = new unsigned int*[2 + _sub_z];
+    for (i = 0; i < _sub_z + 2; i++)
+    {
+        upper_grid_id[i] = new unsigned int[_sub_x + 2];
+    }
+
+    // --side buffers--
+    // front buffer
+    front_grid_id = new unsigned int*[2 + _sub_y];
+    for (i = 0; i < _sub_y + 2; ++i)
+    {
+        front_grid_id[i] = new unsigned int[2 + _sub_x];
+    }
+    // back buffer
+    back_grid_id = new unsigned int*[2 + _sub_y];
+    for (i = 0; i < _sub_y + 2; ++i)
+    {
+        back_grid_id[i] = new unsigned int[2 + _sub_x];
+    }
+    // left buffer
+    left_grid_id = new unsigned int*[2 + _sub_y];
+    for (i = 0; i < _sub_y + 2; ++i)
+    {
+        left_grid_id[i] = new unsigned int[2 + _sub_z];
+    }
+    // right buffer
+    right_grid_id = new unsigned int*[2 + _sub_y];
+    for (i = 0; i < _sub_y + 2; ++i)
+    {
+        right_grid_id[i] = new unsigned int[2 + _sub_z];
+    }
+
+    _buffers_initialized = true;
+}
+
 void CubePrim::_build_cube_data()
 {
     // num faces
-    _num_polygons = (_subdivision[1] + 1) * (_subdivision[2] + 1) * 2 +
-        (_subdivision[0] + 1) * (_subdivision[2] + 1) * 2 +
-        (_subdivision[0] + 1) * (_subdivision[1] + 1) * 2;
+    _num_polygons = (_sub_y + 1) * (_sub_z + 1) * 2 +
+        (_sub_x + 1) * (_sub_z + 1) * 2 +
+        (_sub_x + 1) * (_sub_y + 1) * 2;
 
     // num vertex
     _num_vertices = 8 +
-        4 * _subdivision[0] + 4 * _subdivision[1] + 4 * _subdivision[2] +  // edges vertex
-        _subdivision[0] * _subdivision[1] * 2 +  // xy vertex
-        _subdivision[1] * _subdivision[2] * 2 + // yz vertex
-        _subdivision[2] * _subdivision[0] * 2; // zx vertex
+        4 * _sub_x + 4 * _sub_y + 4 * _sub_z +  // edges vertex
+        _sub_x * _sub_y * 2 +
+        _sub_y * _sub_z * 2 +
+        _sub_z * _sub_x * 2;
 
     // polygon counts
     _poly_counts.clear();
@@ -183,9 +270,7 @@ void CubePrim::_build_cube_data()
 
     _build_vertex_array();
 
-
     _build_connection_array();
-
 }
 
 // vertex array functions
@@ -194,68 +279,108 @@ void CubePrim::_build_vertex_array()
 // vert positions
 {
     _vertex_array.clear();
+    _clear_buffers();
+    _build_buffers();
 
-    int xz_inner_vtx = _subdivision[2] * _subdivision[0];
-    int xz_outhrt_vtx = 4 + _subdivision[0] * 2 + _subdivision[2] * 2;
+    int xz_inner_vtx = _sub_z * _sub_x;
+    int xz_outhrt_vtx = 4 + _sub_x * 2 + _sub_z * 2;
 
-    int face_vertex = 4 + _subdivision[0] * 2 + _subdivision[2] * 2 + _subdivision[0] * _subdivision[2];
+    int face_vertex = 4 + _sub_x * 2 + _sub_z * 2 + _sub_x * _sub_z;
 
     double x_initial_val = - _size[0] / 2.0;
     double y_initial_val = - _size[1] / 2.0;
     double z_initial_val = - _size[2] / 2.0;
 
-    double x_increments = _size[0] / (_subdivision[0] + 1);
-    double y_increments = _size[1] / (_subdivision[1] + 1);
-    double z_increments = _size[2] / (_subdivision[2] + 1);
+    double x_increments = _size[0] / (_sub_x + 1);
+    double y_increments = _size[1] / (_sub_y + 1);
+    double z_increments = _size[2] / (_sub_z + 1);
+
+    double x_offset = (-_size[0] / 2.f) + x_increments;
+    double y_offset = (-_size[1] / 2.f) + y_increments;
+    double z_offset = (-_size[2] / 2.f) + z_increments;
 
     unsigned int i, j;
 
-    // bottom face grid points
-    _fill_grid_points(_vertex_array, _subdivision[0], _subdivision[2], x_increments, z_increments, 
-        (-_size[0]/2.f) + x_increments, (-_size[2]/2.f) + z_increments, -_size[1]/2.f);
+    // bottom grid points
+    _fill_grid_points(_sub_x, _sub_z, 0,
+        x_increments, z_increments, y_increments,
+        x_offset, z_offset, -_size[1] / 2.f,
+        bottom_grid_id, _vertex_array.length());
+
+    // back grid points
+    _fill_grid_points(_sub_x, 0, _sub_y,
+        x_increments, z_increments, y_increments,
+        x_offset, -_size[2] / 2.f, y_offset,
+        back_grid_id, _vertex_array.length());
+
+    // right grid points
+    _fill_grid_points(0, _sub_z, _sub_y,
+        x_increments, z_increments, y_increments,
+        -_size[0] / 2.f, z_offset, y_offset,
+        right_grid_id, _vertex_array.length());
+
+    // upper grid points
+    _fill_grid_points(_sub_x, _sub_z, 0,
+        x_increments, z_increments, y_increments,
+        x_offset, z_offset, _size[1] / 2.f,
+        upper_grid_id, _vertex_array.length());
+
+    // front grid points
+    _fill_grid_points(_sub_x, 0, _sub_y,
+        x_increments, z_increments, y_increments,
+        x_offset, _size[2] / 2.f, y_offset,
+        front_grid_id, _vertex_array.length());
+
+    // left grid points
+    _fill_grid_points(0, _sub_z, _sub_y,
+        x_increments, z_increments, y_increments,
+        _size[0] / 2.f, z_offset, y_offset,
+        left_grid_id, _vertex_array.length());
+
+
+    // fill edge points
+
     // side points
-    _fill_side_points(_vertex_array, _subdivision[0], _subdivision[2], _subdivision[1], 
-        x_increments, z_increments, y_increments, -(_size[0] / 2.f), -(_size[2] / 2.f), -(_size[1] / 2.f));
-    // top face grid points
-    _fill_grid_points(_vertex_array, _subdivision[0], _subdivision[2], x_increments, z_increments,
-        (-_size[0] / 2.f) + x_increments, (-_size[2] / 2.f) + z_increments, _size[1] / 2.f);
+    _fill_edge_points(x_increments, z_increments, y_increments, 
+        -(_size[0] / 2.f), -(_size[2] / 2.f), -(_size[1] / 2.f));
+    
 }
 
-static MStatus _fill_side_points(
-    MFloatPointArray& point_array, const int& x_sub, const int& z_sub, const int& y_sub,
-    const float& x_incr, const float& z_incr, const float& y_incr, const float& x_offset, 
-    const float& z_offset, const float& y_offset)
+// TODO: build vertex positions and fill id buffers, theese index are shared
+void CubePrim::_fill_edge_points(
+    const float& x_incr, const float& z_incr, const float& y_incr, 
+    const float& x_offset, const float& z_offset, const float& y_offset)
 {
-    float x_max_value = (x_incr * (x_sub + 1)) + x_offset;
-    float z_max_value = (z_incr * (z_sub + 1)) + z_offset;
+    float x_max_value = (x_incr * (_sub_x + 1)) + x_offset;
+    float z_max_value = (z_incr * (_sub_z + 1)) + z_offset;
 
     unsigned int i = 0, j = 0;
-    for (j = 0; j <= y_sub+1; ++j)
+    for (j = 0; j <= _sub_y+1; ++j)
     {
         float y_current_value = (y_incr * j) + y_offset;
 
         // x row
-        for (i = 0; i <= x_sub; ++i)
+        for (i = 0; i <= _sub_x; ++i)
         {
-            point_array.append(MPoint(
+            _vertex_array.append(MPoint(
                 (x_incr * i) + x_offset,
                 y_current_value,
                 z_offset));
         }
 
         // z row
-        for (i = 0; i <= z_sub; ++i)
+        for (i = 0; i <= _sub_z; ++i)
         {
-            point_array.append(MPoint(
-                x_incr * (x_sub + 1),
+            _vertex_array.append(MPoint(
+                x_incr * (_sub_x + 1),
                 y_current_value,
                 (z_incr * i) + z_offset));
         }
 
         // -x row
-        for (i = 0; i <= x_sub; ++i)
+        for (i = 0; i <= _sub_x; ++i)
         {
-            point_array.append(MPoint(
+            _vertex_array.append(MPoint(
                 x_max_value - (x_incr * i),
                 y_current_value,
                 z_max_value
@@ -263,109 +388,77 @@ static MStatus _fill_side_points(
         }
 
         // -z row
-        for (i = 0; i <= z_sub; ++i)
+        for (i = 0; i <= _sub_z; ++i)
         {
-            point_array.append(MPoint(
+            _vertex_array.append(MPoint(
                 x_offset,
                 y_current_value,
                 z_max_value - (z_incr * i)
             ));
         }
     }
-
-    return MS::kSuccess;
 }
 
-/*Recursive implementation of _fill_grid_points, 
-  use with default arguents implementation if you don't has all data.*/
-static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
-    const float& x_incr, const float& z_incr, 
+/**/
+void CubePrim::_fill_grid_points(
+    const float& x_sub, const float& z_sub, const float& y_sub,
+    const float& x_incr, const float& z_incr, const float& y_incr,
     const float& x_offset, const float& z_offset, const float& y_offset,
-    bool** visited_points, int2 pos, int2 dir)
+    unsigned int**& id_buffer, int id_buffer_offset = 0)
 {
-    if (visited_points[pos[0]][pos[1]])
-    {
-        return MS::kSuccess;
-    }
+    unsigned int i, j, k;
 
-    // add point
-    point_array.append(MPoint(
-        (x_incr * pos[0]) + x_offset,
-        y_offset,
-        (z_incr * pos[1]) + z_offset));
+    if (x_sub && z_sub) {
+        for (j = 0; j < z_sub; ++j)
+        {
+            for (i = 0; i < x_sub; ++i)
+            {
+                _vertex_array.append(MPoint(
+                    (x_incr * i) + x_offset,
+                    y_offset,
+                    (z_incr * j) + z_offset));
 
-    int next_x = pos[0] + dir[0];
-    int next_z = pos[1] + dir[1];
-
-    // if next point is visited yet or it is out of margins, change direction
-    if (visited_points[next_x][next_z] ||
-        next_x > x_sub - 1 || next_x < 0 ||
-        next_z > z_sub - 1 || next_z < 0)
-    {
-        // change direction
-        if (dir[0] > 0 && dir[1] == 0) {
-            dir[0] = 0; dir[1] == 1;
-        }
-        else if (dir[0] == 0 && dir[1] > 0) {
-            dir[0] = -1; dir[1] = 0;
-        }
-        else if (dir[0] < 0 && dir[1] == 0) {
-            dir[0] = 0; dir[1] = -1;
-        }
-        else {
-            dir[0] = 1; dir[1] = 0;
+                // fill the buffer id
+                id_buffer[j + 1][i + 1] = (x_sub * j) + i + id_buffer_offset;
+            }
         }
     }
 
-    // set current point as visited
-    visited_points[pos[0]][pos[1]] = true;
-
-    // update pos
-    pos[0] += dir[0];
-    pos[1] += dir[1];
-
-    return _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr,
-        x_offset, z_offset, y_offset,
-        visited_points, pos, dir);
-}
-
-/*intialize process with default arguments*/
-static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
-    const float& x_incr, const float& z_incr,
-    const float& x_offset, const float& z_offset, const float& y_offset)
-{
-    int2 pos, dir;
-    pos[0] = pos[1] = 0;
-    dir[0] = 1; dir[1] = 0; // check first direction take in account subdivisions
-
-    if (!(x_sub * z_sub))
+    else if (z_sub && y_sub)
     {
-        return MS::kSuccess;
+        for (k = 0; k < y_sub; ++k)
+        {
+            for (j = 0; j < z_sub; ++j)
+            {
+                _vertex_array.append(MPoint(
+                    x_offset,
+                    (y_incr * k) + y_offset,
+                    (z_incr * j) + z_offset));
+
+                // fill the buffer id
+                id_buffer[k + 1][j + 1] = (z_sub * k) + j + id_buffer_offset;
+
+            }
+        }
     }
 
-    MStatus stat;
-    // create points int array
-    bool** visited_points = new bool*[x_sub];
-    for (unsigned int i = 0; i < z_sub; ++i) visited_points[i] = new bool[z_sub] {false};
-    
-    try
-    { 
-        stat = _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, x_offset, z_offset, y_offset, visited_points, pos, dir);
-    }
-    catch (...)
+    else if (x_sub && y_sub)
     {
-        std::cout << "ERROR at calculate grid points positions";
-        stat = MS::kFailure;
+        for (k = 0; k < y_sub; ++k)
+        {
+            for (i = 0; i < x_sub; ++i)
+            {
+                _vertex_array.append(MPoint(
+                    (x_incr * i) + x_offset,
+                    (y_incr * k) + y_offset,
+                    z_offset));
+
+                // fill the buffer id
+                id_buffer[k + 1][i + 1] = (x_sub * k) + i + id_buffer_offset;
+            }
+        }
     }
 
-    // delete visited_points pointers
-    for (unsigned int i = 0; i < z_sub; ++i)
-    {
-        delete[] visited_points[i];
-    }
-    delete[] visited_points;
-
-    return stat;
 }
 
 

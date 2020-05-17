@@ -65,6 +65,9 @@ private:
     // copy of size and subdivision input attributes
     double3 _size;
     int3 _subdivision;
+    int _sub_x;
+    int _sub_y;
+    int _sub_z;
 
     // mesh construction attributes
     int _num_vertices;
@@ -73,15 +76,15 @@ private:
     MIntArray _poly_counts;
     MIntArray _polygon_connects;
 
+    // topological data buffers
     std::vector<std::vector<int>> _topological_data;
 
-    // topology attributes
-    int** bottom_grid_id;
-    int** front_grid_id;
-    int** back_grid_id;
-    int** left_grid_id;
-    int** right_grid_id;
-    int** upper_grid_id;
+    unsigned int** bottom_grid_id;
+    unsigned int** front_grid_id;
+    unsigned int** back_grid_id;
+    unsigned int** left_grid_id;
+    unsigned int** right_grid_id;
+    unsigned int** upper_grid_id;
 
     // chanfer grids
 
@@ -91,6 +94,22 @@ private:
     void _build_vertex_array();
     void _build_topological_data();
     void _build_connection_array();
+
+    void _fill_edge_points(const float& x_incr, const float& z_incr,
+        const float& y_incr, const float& x_offset,
+        const float& z_offset, const float& y_offset);
+
+    void _fill_grid_points(
+        const float& x_sub, const float& z_sub, const float& y_sub,
+        const float& x_incr, const float& z_incr, const float& y_incr,
+        const float& x_offset, const float& z_offset, const float& y_offset,
+        unsigned int**& id_buffer, int id_buffer_offset = 0);
+
+    // buffer operations
+    void _clear_buffers();
+    void _build_buffers();
+    bool _buffers_initialized = false;
+
 
     // TODO check if redo topology, only if subdvision changes
     bool _redo_topology = true;
