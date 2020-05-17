@@ -48,22 +48,35 @@ void print_callback(T cb)
     std::cout << cb(8, 8) << std::endl;
 }
 
+void _r_l_values(const int& a)
+{
+    std::cout << a + 3 << std::endl;
+}
+
+template <typename T>
+constexpr bool is_lvalue(T&&) {
+    return std::is_lvalue_reference<T>{};
+}
+
 int main()
 {
-    std::cout << ret_fun() << std::endl;
-    std::cout << m_sum << std::endl;
-    std::cout << ret_fun_2(5) << std::endl;
+    //std::cout << ret_fun() << std::endl;
+    //std::cout << m_sum << std::endl;
+    //std::cout << ret_fun_2(5) << std::endl;
 
-    auto f = ret_fun_3(5);
-    auto g = ret_fun_3(10);
+    //auto f = ret_fun_3(5);
+    //auto g = ret_fun_3(10);
 
-    std::cout << &f << std::endl;
+    //std::cout << &f << std::endl;
 
-    print_callback(g);
-    print_callback(m_sum);
+    //print_callback(g);
+    //print_callback(m_sum);
 
-    std::cout << f(5, 5) << std::endl;
-    std::cout << g(5, 5) << std::endl;
+    //std::cout << f(5, 5) << std::endl;
+    //std::cout << g(5, 5) << std::endl;
 
+    _r_l_values(3);
+
+    std::cout << is_lvalue(3) << std::endl;
     return 0;
 }

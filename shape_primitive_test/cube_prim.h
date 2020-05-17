@@ -31,6 +31,8 @@
 #include <math.h>
 #include <maya/MTypeId.h>
 
+#include <vector>
+
 class CubePrim : public MPxNode
 {
 
@@ -71,13 +73,23 @@ private:
     MIntArray _poly_counts;
     MIntArray _polygon_connects;
 
+    std::vector<std::vector<int>> _topological_data;
 
     // topology attributes
+    int** bottom_grid_id;
+    int** front_grid_id;
+    int** back_grid_id;
+    int** left_grid_id;
+    int** right_grid_id;
+    int** upper_grid_id;
+
+    // chanfer grids
 
 
     // methods
     void _build_cube_data();
     void _build_vertex_array();
+    void _build_topological_data();
     void _build_connection_array();
 
     // TODO check if redo topology, only if subdvision changes

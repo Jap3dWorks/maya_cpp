@@ -188,6 +188,8 @@ void CubePrim::_build_cube_data()
 
 }
 
+// vertex array functions
+// ----------------------
 void CubePrim::_build_vertex_array()
 // vert positions
 {
@@ -219,8 +221,7 @@ void CubePrim::_build_vertex_array()
         (-_size[0] / 2.f) + x_increments, (-_size[2] / 2.f) + z_increments, _size[1] / 2.f);
 }
 
-// TODO:: return status
-static void _fill_side_points(
+static MStatus _fill_side_points(
     MFloatPointArray& point_array, const int& x_sub, const int& z_sub, const int& y_sub,
     const float& x_incr, const float& z_incr, const float& y_incr, const float& x_offset, 
     const float& z_offset, const float& y_offset)
@@ -271,17 +272,20 @@ static void _fill_side_points(
             ));
         }
     }
+
+    return MS::kSuccess;
 }
 
-// TODO:: return status
-static void _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
+/*Recursive implementation of _fill_grid_points, 
+  use with default arguents implementation if you don't has all data.*/
+static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
     const float& x_incr, const float& z_incr, 
     const float& x_offset, const float& z_offset, const float& y_offset,
     bool** visited_points, int2 pos, int2 dir)
 {
     if (visited_points[pos[0]][pos[1]])
     {
-        return;
+        return MS::kSuccess;
     }
 
     // add point
@@ -297,6 +301,7 @@ static void _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, c
     if (visited_points[next_x][next_z] ||
         next_x > x_sub - 1 || next_x < 0 ||
         next_z > z_sub - 1 || next_z < 0)
+    {
         // change direction
         if (dir[0] > 0 && dir[1] == 0) {
             dir[0] = 0; dir[1] == 1;
@@ -319,12 +324,12 @@ static void _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, c
     pos[0] += dir[0];
     pos[1] += dir[1];
 
-    _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, 
+    return _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr,
         x_offset, z_offset, y_offset,
         visited_points, pos, dir);
 }
 
-/*Overload implementation to intialize default arguments*/
+/*intialize process with default arguments*/
 static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub, const int& z_sub,
     const float& x_incr, const float& z_incr,
     const float& x_offset, const float& z_offset, const float& y_offset)
@@ -338,14 +343,14 @@ static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub
         return MS::kSuccess;
     }
 
-    MStatus stat = MS::kSuccess;
+    MStatus stat;
     // create points int array
     bool** visited_points = new bool*[x_sub];
     for (unsigned int i = 0; i < z_sub; ++i) visited_points[i] = new bool[z_sub] {false};
     
     try
     { 
-        _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, x_offset, z_offset, y_offset, visited_points, pos, dir);
+        stat = _fill_grid_points(point_array, x_sub, z_sub, x_incr, z_incr, x_offset, z_offset, y_offset, visited_points, pos, dir);
     }
     catch (...)
     {
@@ -353,15 +358,78 @@ static MStatus _fill_grid_points(MFloatPointArray& point_array, const int& x_sub
         stat = MS::kFailure;
     }
 
-    // set free visited points pointers
+    // delete visited_points pointers
     for (unsigned int i = 0; i < z_sub; ++i)
     {
         delete[] visited_points[i];
     }
-
     delete[] visited_points;
 
     return stat;
+}
+
+
+// Build topology
+// --------------
+void CubePrim::_build_topological_data()
+{
+    _topological_data.clear();
+
+    const int xz_grid_size = _subdivision[0] * _subdivision[2];
+
+    const int& x_sub = _subdivision[0];
+    const int& y_sub = _subdivision[1];
+    const int& z_sub = _subdivision[2];
+
+    const int vertex_floor = _subdivision[0] * 2 + _subdivision[2] * 2 + 4;
+    unsigned int vertex_floor_offset;
+
+    auto _create_face = [&vertex_floor](const int& id)->std::vector<int>
+    {
+        std::vector<int>face_ids;
+        face_ids.push_back(id );
+        face_ids.push_back(id + 1);
+        face_ids.push_back(id + 1 - vertex_floor);
+        face_ids.push_back(id - vertex_floor);
+        
+        return face_ids;
+    };
+
+    unsigned int i, j, k;
+    for (i = 1; i <= y_sub + 1; ++i) // for each y subdivision
+    {
+        // always start at 1rst floor
+        vertex_floor_offset = vertex_floor * (i) + xz_grid_size;
+
+        // construct x direction faces
+        for (j = 0; j < x_sub + 1; ++j)
+        {
+            _topological_data.push_back(
+                _create_face(j + vertex_floor_offset));
+        }
+
+        // construct z direction faces
+        for (j = 0; j < z_sub + 1; ++j)
+        {
+            _topological_data.push_back(
+                _create_face(j + x_sub + vertex_floor_offset));
+        }
+
+        // construct -x direction faces
+        for (j = 0; j < x_sub + 1; ++j)
+        {
+            _topological_data.push_back(
+                _create_face(j + x_sub + z_sub + vertex_floor_offset));
+        }
+
+        // construct -x direction faces
+        for (j = 0; j < x_sub + 1; ++j)
+        {
+            _topological_data.push_back(
+                _create_face(j + 2*x_sub + z_sub + vertex_floor_offset));
+        }
+    }
+
 }
 
 
@@ -398,7 +466,6 @@ void CubePrim::_build_connection_array()
     }
 
     // xy faces
-
     int yx_f_count = (_subdivision[0] + 1) * (_subdivision[1] + 1);
     for (unsigned int f = 0; f < 2; ++f)
     {
