@@ -11,8 +11,8 @@
 #include <string>
 
 
-#define McheckError(stat, message)          \
-    if (MS::kSuccess != stat){              \
+#define McheckError(status, message)          \
+    if (MS::kSuccess != status){              \
         cerr << message;                    \
         return MS::kFailure;                \
     }
@@ -83,36 +83,36 @@ void* GetCacheGeos::creator()
 
 inline MStatus addMeshAttribute(MObject& attribute, MString longName, MString briefName)
 {
-    MStatus stat;
+    MStatus status;
     MFnTypedAttribute typedFn;
 }
 
 MStatus GetCacheGeos::initialize()
 {
-    MStatus stat;
+    MStatus status;
     MFnTypedAttribute typedFn;
 
     // initialize output
-    a_out_mesh = typedFn.create("outMesh", "o", MFnData::kMesh, &stat);
-    McheckError(stat, "Fail to initialize plugin\n");
+    a_out_mesh = typedFn.create("outMesh", "o", MFnData::kMesh, MObject::kNullObj, &status);
+    McheckError(status, "Fail to initialize plugin\n");
     MAKE_OUTPUT(typedFn);
     McheckError(addAttribute(a_out_mesh), "Fail to add attribute");
 
     // initialize inputs
     // mesh inputs
-    a_input_mesh_1 = typedFn.create("inputMesh1", "im1", MFnData::kMesh, &stat);
-    McheckError(stat, "Fail to initialize plugin\n");
+    a_input_mesh_1 = typedFn.create("inputMesh1", "im1", MFnData::kMesh, MObject::kNullObj, &status);
+    McheckError(status, "Fail to initialize plugin\n");
     MAKE_INPUT(typedFn);
     McheckError(addAttribute(a_input_mesh_1), "Fail to add attribute");
 
-    a_input_mesh_2 = typedFn.create("inputMesh2", "im2", MFnData::kMesh, &stat);
-    McheckError(stat, "Fail to initialize plugin\n");
+    a_input_mesh_2 = typedFn.create("inputMesh2", "im2", MFnData::kMesh, MObject::kNullObj, &status);
+    McheckError(status, "Fail to initialize plugin\n");
     MAKE_INPUT(typedFn);
     McheckError(addAttribute(a_input_mesh_2), "Fail to add attribute");
 
     MFnEnumAttribute eAttr;
-    a_select_mesh = eAttr.create("selectMesh", "sm", 0, &stat);
-    McheckError(stat, "Fail to initialie plugin\n");
+    a_select_mesh = eAttr.create("selectMesh", "sm", 0, &status);
+    McheckError(status, "Fail to initialie plugin\n");
     McheckError(eAttr.addField("mesh1", 0), "Fail to add enum field\n");
     McheckError(eAttr.addField("mesh2", 1), "Fail to add enum field\n");
     MAKE_INPUT(typedFn);
@@ -144,7 +144,7 @@ inline const short dirty_state(MDataBlock& data)
 
 MStatus GetCacheGeos::compute(const MPlug& plug, MDataBlock& data)
 {
-    MStatus stat;
+    MStatus status;
     if (plug != a_out_mesh)
     {
         return MS::kUnknownParameter;  // maya will call internal maya node method
@@ -153,7 +153,7 @@ MStatus GetCacheGeos::compute(const MPlug& plug, MDataBlock& data)
     const short d_state = dirty_state(data);
 
     // get enum input
-    const MDataHandle& select_mesh_handle = data.inputValue(a_select_mesh, &stat);
+    const MDataHandle& select_mesh_handle = data.inputValue(a_select_mesh, &status);
     const short& select_mesh_val = select_mesh_handle.asShort();
 
     const MDataHandle* mesh_handle;
@@ -161,13 +161,13 @@ MStatus GetCacheGeos::compute(const MPlug& plug, MDataBlock& data)
 
     if (select_mesh_val == 0) {
         MGlobal::displayInfo("Selector at 0");
-        mesh_handle = &data.inputValue(a_input_mesh_1, &stat);
+        mesh_handle = &data.inputValue(a_input_mesh_1, &status);
         cached_mesh = &mesh1_cache;
     }
 
     else if (select_mesh_val == 1){
         MGlobal::displayInfo("Selector at 1");
-        mesh_handle = &data.inputValue(a_input_mesh_2, &stat);
+        mesh_handle = &data.inputValue(a_input_mesh_2, &status);
         cached_mesh = &mesh2_cache;
     }
 
@@ -178,7 +178,7 @@ MStatus GetCacheGeos::compute(const MPlug& plug, MDataBlock& data)
     ss << static_cast<const void*>(mesh_handle);
     MGlobal::displayInfo(ss.str().c_str());
 
-    MDataHandle& out_mesh_handle = data.outputValue(a_out_mesh, &stat);
+    MDataHandle& out_mesh_handle = data.outputValue(a_out_mesh, &status);
 
     ss.str(std::string());
     ss << static_cast<const void*>(&(out_mesh_handle.asMesh()));
@@ -215,7 +215,8 @@ MStatus initializePlugin(MObject obj)
     MStatus status;
     MFnPlugin fn_plugin(obj, "", "2018", "any");
 
-    status = fn_plugin.registerNode(GetCacheGeos::name,
+    status = fn_plugin.registerNode(
+        GetCacheGeos::name,
         GetCacheGeos::id,
         &GetCacheGeos::creator,
         &GetCacheGeos::initialize);

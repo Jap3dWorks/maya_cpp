@@ -37,7 +37,7 @@ class CubePrim : public MPxNode
 {
 
 public:
-    CubePrim() {}
+    CubePrim();
     virtual ~CubePrim() override {}
 
     static void* creator();
@@ -47,6 +47,7 @@ public:
 public:
     // attributes
     static MTypeId id;
+    static MString name;
 
     static MObject size;
     static MObject size_x;
@@ -63,43 +64,54 @@ public:
 private:
     // attributes
     // copy of size and subdivision input attributes
-    double3 _size;
-    int3 _subdivision;
-    int _sub_x;
-    int _sub_y;
-    int _sub_z;
+    double _size_x;
+    double _size_y;
+    double _size_z;
+
+    unsigned int _sub_x;
+    unsigned int _sub_y;
+    unsigned int _sub_z;
+
+    // distance between two vertex in the same axis
+    double _incr_x;
+    double _incr_y;
+    double _incr_z;
+
+    // max distance of each axis from center
+    double _offset_x;
+    double _offset_y;
+    double _offset_z;
 
     // mesh construction attributes
-    int _num_vertices;
-    int _num_polygons;
-    MFloatPointArray _vertex_array;
-    MIntArray _poly_counts;
-    MIntArray _polygon_connects;
+    MFloatPointArray m_vertex_array; // vertex position array
+    MIntArray m_poly_counts; // poly vertex array
+    MIntArray m_polygon_connects;
 
-    // topological data buffers
-    std::vector<std::vector<int>> _topological_data;
+    // id face buffers
+    unsigned int _size_buffer_x;
+    unsigned int _size_buffer_z;
+    unsigned int _size_buffer_y;
+    unsigned int** bottom_buffer_id;
+    unsigned int** front_buffer_id;
+    unsigned int** back_buffer_id;
+    unsigned int** left_buffer_id;
+    unsigned int** right_buffer_id;
+    unsigned int** upper_buffer_id;
 
-    unsigned int** bottom_grid_id;
-    unsigned int** front_grid_id;
-    unsigned int** back_grid_id;
-    unsigned int** left_grid_id;
-    unsigned int** right_grid_id;
-    unsigned int** upper_grid_id;
+    bool _buffers_initialized = false;
 
     // chanfer grids
 
-
     // methods
-    void _build_cube_data();
-    void _build_vertex_array();
-    void _build_topological_data();
-    void _build_connection_array();
+    void build_cube();
+    void _build_vertex();
+    void _build_topology_connection();
 
-    void _fill_edge_points(const float& x_incr, const float& z_incr,
+    void _fill_edge_vertex(const float& x_incr, const float& z_incr,
         const float& y_incr, const float& x_offset,
         const float& z_offset, const float& y_offset);
 
-    void _fill_grid_points(
+    void _fill_grid_vertex(
         const float& x_sub, const float& z_sub, const float& y_sub,
         const float& x_incr, const float& z_incr, const float& y_incr,
         const float& x_offset, const float& z_offset, const float& y_offset,
@@ -108,11 +120,11 @@ private:
     // buffer operations
     void _clear_buffers();
     void _build_buffers();
-    bool _buffers_initialized = false;
-
 
     // TODO check if redo topology, only if subdvision changes
     bool _redo_topology = true;
+
+    void reposition_vertices(MFloatPointArray& vertex_array);
 };
 
 
