@@ -1,6 +1,25 @@
 #include "cube_prim.h"
 #include <maya/MPoint.h>
 #include <algorithm>
+#include <cmath>
+#include <math.h>
+#include <maya/MGlobal.h>
+
+#define DEBUG_LEVEL 3
+
+#if DEBUG_LEVEL == 3
+#define __DEBUG__
+#endif
+
+#ifdef __DEBUG__
+#define DEBUG(message)  \
+    std::cout << message << std::endl;\
+    MGlobal::displayInfo(message);
+#else // __DEBUG__
+#define DEBUG(message)
+#endif
+
+
 
 #define McheckErr(status, msg)    \
     if (MS::kSuccess != status){  \
@@ -38,6 +57,11 @@ MObject CubePrim::outMesh;
 /*constructor set redo_topology as true to bild an initial cube*/
 CubePrim::CubePrim(): _redo_topology(true) {}
 
+CubePrim::~CubePrim() {
+    DEBUG("Call destructor")
+    _clear_buffers();
+}
+
 void* CubePrim::creator()
 {
     return new CubePrim();
@@ -45,7 +69,6 @@ void* CubePrim::creator()
 
 MStatus CubePrim::initialize()
 {
-
     MStatus status;
     MFnTypedAttribute typedFn;
     MFnNumericAttribute uAttr;
@@ -70,10 +93,16 @@ MStatus CubePrim::initialize()
     // subdivision
     subdivision_x = uAttr.create("subdivisionX", "sdx", MFnNumericData::kInt, 0, &status);
     McheckErr(status, "ERROR creating subdivisionX attribute");
+    McheckErr(uAttr.setMin(0), "ERROR setting min subdivisionX value");
+
     subdivision_y = uAttr.create("subdivisionY", "sdy", MFnNumericData::kInt, 0, &status);
     McheckErr(status, "ERROR creating subdivisionY attribute");
+    McheckErr(uAttr.setMin(0), "ERROR setting min subdivisionY value");
+
     subdivision_z = uAttr.create("subdivisionZ", "sdz", MFnNumericData::kInt, 0, &status);
     McheckErr(status, "ERROR creating subdivisionZ attribute");
+    McheckErr(uAttr.setMin(0), "ERROR setting min subdivisionZ value");
+
     subdivision = uAttr.create("subdivision", "sd", subdivision_x, subdivision_y, subdivision_z, &status);
     McheckErr(status, "ERROR creating subdivision attribute");
     
@@ -88,14 +117,14 @@ MStatus CubePrim::initialize()
     McheckErr(status, "ERROR adding subdivision attributes");
     
     // affects
-    CHECK_MSTATUS(attributeAffects(size_x, outMesh))
-    CHECK_MSTATUS(attributeAffects(size_y, outMesh))
-    CHECK_MSTATUS(attributeAffects(size_z, outMesh))
-    CHECK_MSTATUS(attributeAffects(size, outMesh))
-    CHECK_MSTATUS(attributeAffects(subdivision_x, outMesh))
-    CHECK_MSTATUS(attributeAffects(subdivision_y, outMesh))
-    CHECK_MSTATUS(attributeAffects(subdivision_z, outMesh))
-    CHECK_MSTATUS(attributeAffects(subdivision, outMesh))
+    CHECK_MSTATUS(attributeAffects(size_x, outMesh));
+    CHECK_MSTATUS(attributeAffects(size_y, outMesh));
+    CHECK_MSTATUS(attributeAffects(size_z, outMesh));
+    CHECK_MSTATUS(attributeAffects(size, outMesh));
+    CHECK_MSTATUS(attributeAffects(subdivision_x, outMesh));
+    CHECK_MSTATUS(attributeAffects(subdivision_y, outMesh));
+    CHECK_MSTATUS(attributeAffects(subdivision_z, outMesh));
+    CHECK_MSTATUS(attributeAffects(subdivision, outMesh));
 
     return MS::kSuccess;
 }
@@ -195,20 +224,20 @@ void CubePrim::build_cube()
     {
         m_poly_counts.append(4);
     }
-
+    _build_buffers();
     _build_vertex();
     _build_topology_connection();
 }
 
 void CubePrim::_clear_buffers()
 {
-    if (!_buffers_initialized) return;
-
     unsigned int i;
-    // bottom buffer and upper buffer
-    for (const auto& buffer : { bottom_buffer_id, upper_buffer_id })
+    // bottom buffer and upper buffer front, back, left, right buffers
+    for (const auto& buffer : { bottom_buffer_id, upper_buffer_id,
+                                front_buffer_id, back_buffer_id,
+                                left_buffer_id, right_buffer_id })
     {
-        for (i = 0; i < _size_buffer_z + 2; ++i) 
+        for (i = 0; i < _size_buffer; ++i)
         {
             delete[] buffer[i];
             buffer[i] = nullptr;
@@ -216,83 +245,92 @@ void CubePrim::_clear_buffers()
         delete[] buffer;
     }
     
-    // front, back, left, right buffers
-    for (const auto& buffer : { front_buffer_id, back_buffer_id,
-                                left_buffer_id, right_buffer_id })
-    {
-        for (i = 0; i < _size_buffer_y + 2; ++i) 
-        {
-            delete[] buffer[i];
-            buffer[i] = nullptr;
-        };
-        delete[] buffer;
-    }
-
     // assing nullptr to each buffer
     bottom_buffer_id = nullptr;
+    upper_buffer_id = nullptr;
     front_buffer_id = nullptr;
     back_buffer_id = nullptr;
     left_buffer_id = nullptr;
     right_buffer_id = nullptr;
-    upper_buffer_id = nullptr;
+}
 
-    _buffers_initialized = false;
+/*Returns the new size buffer to contain the need size*/
+static int get_new_buffer_size(unsigned int current, unsigned int need)
+{
+    float numerator = static_cast<float>(need - current);
+    float denominator = static_cast<float>(current);
+
+    float increments = log((numerator / denominator) + 1.f) / log(2.f);
+    
+    if (increments > 0)
+    {
+        return current * pow(2, std::ceil(increments));
+    }
+    else
+    {
+        return current;
+    }
 }
 
 void CubePrim::_build_buffers()
 {
-    if (_buffers_initialized)
+    // scale buffers only if needed
+    unsigned int max_needed = std::max(2 + _sub_x, std::max(2 + _sub_y, 2 + _sub_z));
+    if (max_needed > _size_buffer)
     {
         _clear_buffers();
+
+        // new buffer size
+        _size_buffer = get_new_buffer_size(_size_buffer, max_needed);
+        
+        _initialize_buffers = true;
     }
 
-    unsigned int i = 0;
-    
-    // store buffers size
-    _size_buffer_x = 2 + _sub_x;
-    _size_buffer_y = 2 + _sub_y;
-    _size_buffer_z = 2 + _sub_z;
+    if (_initialize_buffers)
+    {
+        unsigned int i = 0;
 
-    // bottom buffer
-    bottom_buffer_id = new unsigned int*[_size_buffer_z];
-    for (i = 0; i < _size_buffer_z; ++i)
-    {
-        bottom_buffer_id[i] = new unsigned int[_size_buffer_x];
-    }
-    // upper buffer
-    upper_buffer_id = new unsigned int*[_size_buffer_z];
-    for (i = 0; i < _size_buffer_z; i++)
-    {
-        upper_buffer_id[i] = new unsigned int[_size_buffer_x];
-    }
+        // bottom buffer
+        bottom_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; ++i)
+        {
+            bottom_buffer_id[i] = new unsigned int[_size_buffer];
+        }
+        // upper buffer
+        upper_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; i++)
+        {
+            upper_buffer_id[i] = new unsigned int[_size_buffer];
+        }
 
-    // --side buffers--
-    // front buffer
-    front_buffer_id = new unsigned int*[_size_buffer_y];
-    for (i = 0; i < _size_buffer_y; ++i)
-    {
-        front_buffer_id[i] = new unsigned int[_size_buffer_x];
-    }
-    // back buffer
-    back_buffer_id = new unsigned int*[_size_buffer_y];
-    for (i = 0; i < _size_buffer_y; ++i)
-    {
-        back_buffer_id[i] = new unsigned int[_size_buffer_x];
-    }
-    // left buffer
-    left_buffer_id = new unsigned int*[_size_buffer_y];
-    for (i = 0; i < _size_buffer_y; ++i)
-    {
-        left_buffer_id[i] = new unsigned int[_size_buffer_z];
-    }
-    // right buffer
-    right_buffer_id = new unsigned int*[_size_buffer_y];
-    for (i = 0; i < _size_buffer_y; ++i)
-    {
-        right_buffer_id[i] = new unsigned int[_size_buffer_z];
-    }
+        // --side buffers--
+        // front buffer
+        front_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; ++i)
+        {
+            front_buffer_id[i] = new unsigned int[_size_buffer];
+        }
+        // back buffer
+        back_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; ++i)
+        {
+            back_buffer_id[i] = new unsigned int[_size_buffer];
+        }
+        // left buffer
+        left_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; ++i)
+        {
+            left_buffer_id[i] = new unsigned int[_size_buffer];
+        }
+        // right buffer
+        right_buffer_id = new unsigned int*[_size_buffer];
+        for (i = 0; i < _size_buffer; ++i)
+        {
+            right_buffer_id[i] = new unsigned int[_size_buffer];
+        }
 
-    _buffers_initialized = true;
+        _initialize_buffers = false;
+    }
 }
 
 // vertex array functions
@@ -302,12 +340,6 @@ void CubePrim::_build_vertex()
 {
     // reset internal data
     m_vertex_array.clear();
-
-    _build_buffers();
-
-    double x_offset = _size_x / 2.f;
-    double y_offset = _size_y / 2.f;
-    double z_offset = _size_z / 2.f;
 
     // bottom grid points
     _fill_grid_vertex(
@@ -362,50 +394,50 @@ void CubePrim::_fill_edge_vertex(
     const float& x_offset, const float& z_offset, const float& y_offset)
 {
     unsigned int id = m_vertex_array.length();
-    // 3 shared points
-    // basic cube definition
+    // 3 faces shared points
+    // -x, -y, -z -> min point
     m_vertex_array.append(MPoint(
         -x_offset, -y_offset, -z_offset));
     bottom_buffer_id[0][0] = id;
     back_buffer_id[0][0] = id;
     right_buffer_id[0][0] = id;
-
+    // x , -y, -z 
     m_vertex_array.append(MPoint(
         x_offset, -y_offset, -z_offset));
     bottom_buffer_id[0][_sub_x + 1] = ++id;
     back_buffer_id[0][_sub_x + 1] = id;
     left_buffer_id[0][0] = id;
-
+    // x , -y, z
     m_vertex_array.append(MPoint(
         x_offset, -y_offset, z_offset));
     bottom_buffer_id[_sub_z + 1][_sub_x + 1] = ++id;
-    front_buffer_id[0][_sub_z + 1] = id;
+    front_buffer_id[0][_sub_x + 1] = id;
     left_buffer_id[0][_sub_z + 1] = id;
-
+    // -x, -y, z
     m_vertex_array.append(MPoint(
         -x_offset, -y_offset, z_offset));
     bottom_buffer_id[_sub_z + 1][0] = ++id;
     front_buffer_id[0][0] = id;
     right_buffer_id[0][_sub_z + 1] = id;
-
+    // -x, y, -z
     m_vertex_array.append(MPoint(
         -x_offset, y_offset, -z_offset));
     upper_buffer_id[0][0] = ++id;
     back_buffer_id[_sub_y + 1][0] = id;
     right_buffer_id[_sub_y + 1][0] = id;
-
+    // x, y, -z
     m_vertex_array.append(MPoint(
         x_offset, y_offset, -z_offset));
     upper_buffer_id[0][_sub_x + 1] = ++id;
     back_buffer_id[_sub_y + 1][_sub_x + 1] = id;
     left_buffer_id[_sub_y + 1][0] = id;
-
+    //x, y, z -> max point
     m_vertex_array.append(MPoint(
         x_offset, y_offset, z_offset));
     upper_buffer_id[_sub_z + 1][_sub_x + 1] = ++id;
     front_buffer_id[_sub_y + 1][_sub_x + 1] = id;
     left_buffer_id[_sub_y + 1][_sub_z + 1] = id;
-
+    // -x , y, z
     m_vertex_array.append(MPoint(
         -x_offset, y_offset, z_offset));
     upper_buffer_id[_sub_z + 1][0] = ++id;
@@ -618,7 +650,7 @@ void CubePrim::_fill_grid_vertex(
 /*First run _build_vertex method to fill all the buffers id*/
 void CubePrim::_build_topology_connection()
 {
-    if (!_buffers_initialized) return;
+    if (_initialize_buffers) return;
     
     // clear previous connection data
     m_polygon_connects.clear();

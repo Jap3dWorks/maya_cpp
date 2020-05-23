@@ -33,12 +33,14 @@
 
 #include <vector>
 
+#define MIN_BUFFER_SIZE 64;
+
 class CubePrim : public MPxNode
 {
 
 public:
     CubePrim();
-    virtual ~CubePrim() override {}
+    virtual ~CubePrim() override;
 
     static void* creator();
     static MStatus initialize();
@@ -88,17 +90,15 @@ private:
     MIntArray m_polygon_connects;
 
     // id face buffers
-    unsigned int _size_buffer_x;
-    unsigned int _size_buffer_z;
-    unsigned int _size_buffer_y;
-    unsigned int** bottom_buffer_id;
-    unsigned int** front_buffer_id;
-    unsigned int** back_buffer_id;
-    unsigned int** left_buffer_id;
-    unsigned int** right_buffer_id;
-    unsigned int** upper_buffer_id;
+    unsigned int _size_buffer = MIN_BUFFER_SIZE;
+    unsigned int** bottom_buffer_id = nullptr;
+    unsigned int** upper_buffer_id = nullptr;
+    unsigned int** front_buffer_id = nullptr;
+    unsigned int** back_buffer_id = nullptr;
+    unsigned int** left_buffer_id = nullptr;
+    unsigned int** right_buffer_id = nullptr;
 
-    bool _buffers_initialized = false;
+    bool _initialize_buffers = true;
 
     // chanfer grids
 
