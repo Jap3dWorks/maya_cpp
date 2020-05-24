@@ -51,8 +51,9 @@ void print_callback(T cb)
 void _r_l_values(const int& a)
 {
     std::cout << a + 3 << std::endl;
-}
+}SS
 
+// https://stackoverflow.com/questions/5481539/what-does-t-double-ampersand-mean-in-c11
 template <typename T>
 constexpr bool is_lvalue(T&&) {
     return std::is_lvalue_reference<T>{};

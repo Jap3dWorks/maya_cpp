@@ -4,6 +4,7 @@
 #include <cmath>
 #include <math.h>
 #include <maya/MGlobal.h>
+#include <maya/MFloatArray.h>
 
 #define DEBUG_LEVEL 3
 
@@ -12,18 +13,16 @@
 #endif
 
 #ifdef __DEBUG__
-#define DEBUG(message)  \
-    std::cout << message << std::endl;\
+#define DEBUG(message)                 \
+    std::cout << message << std::endl; \
     MGlobal::displayInfo(message);
 #else // __DEBUG__
 #define DEBUG(message)
 #endif
 
-
-
 #define McheckErr(status, msg)    \
     if (MS::kSuccess != status){  \
-        cerr << msg << "\n";    \
+        cerr << msg << "\n";      \
         return status;            \
     }
 
@@ -54,10 +53,13 @@ MObject CubePrim::subdivision_z;
 
 MObject CubePrim::outMesh;
 
-/*constructor set redo_topology as true to bild an initial cube*/
+MString CubePrim::uvSetName("set1");
+
+/*Constructor set redo_topology as true to bild an initial cube*/
 CubePrim::CubePrim(): _redo_topology(true) {}
 
-CubePrim::~CubePrim() {
+CubePrim::~CubePrim()
+{
     DEBUG("Call destructor")
     _clear_buffers();
 }
@@ -103,7 +105,9 @@ MStatus CubePrim::initialize()
     McheckErr(status, "ERROR creating subdivisionZ attribute");
     McheckErr(uAttr.setMin(0), "ERROR setting min subdivisionZ value");
 
-    subdivision = uAttr.create("subdivision", "sd", subdivision_x, subdivision_y, subdivision_z, &status);
+    subdivision = uAttr.create("subdivision", "sd", 
+        subdivision_x, subdivision_y, subdivision_z, &status);
+
     McheckErr(status, "ERROR creating subdivision attribute");
     
     MAKE_INPUT(uAttr);
@@ -145,12 +149,14 @@ MStatus CubePrim::compute(const MPlug& plug, MDataBlock& data)
     _size_z = i_size[2];
 
     // if new input subdivision is different from stored subdivision,
-    // we need to rebuild topology
+    // we need to rebuild topology, 
+    // if _redo_topology is already true the check is not necessary
     if ((!_redo_topology) && 
         (_sub_x != i_subdivision[0] ||
          _sub_y != i_subdivision[1] ||
          _sub_z != i_subdivision[2] ))
     {
+        DEBUG("Redo topology true")
         _redo_topology = true;
     }
 
@@ -172,7 +178,6 @@ MStatus CubePrim::compute(const MPlug& plug, MDataBlock& data)
     McheckErr(status, "ERROR getting output poly handle");
     MObject& mesh = output_h.asMesh();
 
-    // data block
     if (_redo_topology || mesh.isNull())
     {
         MFnMeshData mesh_data;
@@ -192,14 +197,18 @@ MStatus CubePrim::compute(const MPlug& plug, MDataBlock& data)
             mesh_parent,
             &status);
 
+        _build_uv_coords(fnMesh);
+
         output_h.set(mesh_parent);
     }
     else
     {
         MFnMesh fnMesh(mesh);
         MFloatPointArray vertex_array;
+
         // get vertices
         fnMesh.getPoints(vertex_array);
+
         // move vertices
         reposition_vertices(vertex_array);
 
@@ -645,6 +654,7 @@ void CubePrim::_fill_grid_vertex(
 
 }
 
+
 // build topology connection buffer
 // --------------------------------
 /*First run _build_vertex method to fill all the buffers id*/
@@ -725,7 +735,8 @@ void CubePrim::_build_topology_connection()
     }
 }
 
-/*Move verte to it's new position, but not recalculate the topology*/
+/*Move vertex to it's new position, but not recalculate the topology,
+  Here i'd like to use threading*/
 void CubePrim::reposition_vertices(MFloatPointArray& vertex_array)
 {
      const double offset_y = _size_y / 2;
@@ -804,5 +815,51 @@ void CubePrim::reposition_vertices(MFloatPointArray& vertex_array)
             vertex_array[vertex].z = (_incr_z * j) - offset_z;
         }
     }
+}
 
+void CubePrim::_build_uv_coords(MFnMesh& fn_mesh)
+{
+    // clear uvs if we need shrink the size
+    if (fn_mesh.numUVs(CubePrim::uvSetName) > static_cast<int>(m_uvs_ids.length()))
+    {
+        fn_mesh.clearUVs(&CubePrim::uvSetName);
+    }
+
+    MFloatArray uList, vList;
+
+    // calculate uv ids list
+    MIntArray uvIds;
+    unsigned int offset = 0;
+
+    _AddUvPoly add_uv_poly;
+    _AddUvPolyReversed add_uv_poly_reversed;
+
+    // bottom face uv values
+    add_uv_value(uList, vList, _sub_x, _sub_z);
+    offset += add_uv_face(uvIds, _sub_x, _sub_z, offset, add_uv_poly);
+
+    // front face uv values
+    add_uv_value(uList, vList, _sub_x, _sub_y);
+    offset += add_uv_face(uvIds, _sub_x, _sub_y, offset, add_uv_poly);
+
+    // right face uv values
+    add_uv_value(uList, vList, _sub_z, _sub_y);
+    offset += add_uv_face(uvIds, _sub_z, _sub_y, offset, add_uv_poly);
+
+    // upper face uv values
+    add_uv_value(uList, vList, _sub_x, _sub_z);
+    offset += add_uv_face(uvIds, _sub_x, _sub_z, offset, add_uv_poly_reversed);
+
+    // back face uv values
+    add_uv_value(uList, vList, _sub_x, _sub_y);
+    offset += add_uv_face(uvIds, _sub_x, _sub_y, offset, add_uv_poly_reversed);
+
+    // left face uv values
+    add_uv_value(uList, vList, _sub_z, _sub_y);
+    offset += add_uv_face(uvIds, _sub_z, _sub_y, offset, add_uv_poly_reversed);
+
+    // set uv
+    fn_mesh.setUVs(uList, vList, &CubePrim::uvSetName);
+    // assign uvs
+    fn_mesh.assignUVs(m_poly_counts, uvIds, &CubePrim::uvSetName);
 }

@@ -63,6 +63,8 @@ public:
 
     static MObject outMesh;
 
+    static MString uvSetName;
+
 private:
     // attributes
     // copy of size and subdivision input attributes
@@ -86,7 +88,7 @@ private:
 
     // mesh construction attributes
     MFloatPointArray m_vertex_array; // vertex position array
-    MIntArray m_poly_counts; // poly vertex array
+    MIntArray m_poly_counts; // poly vertex array, also used for uvs counts
     MIntArray m_polygon_connects;
 
     // id face buffers
@@ -101,6 +103,10 @@ private:
     bool _initialize_buffers = true;
 
     // chanfer grids
+
+    // uvs
+    MIntArray m_uvs_ids;
+
 
     // methods
     void build_cube();
@@ -117,6 +123,8 @@ private:
         const float& x_offset, const float& z_offset, const float& y_offset,
         unsigned int**& id_buffer, int id_buffer_offset = 0);
 
+    void _build_uv_coords(MFnMesh& fn_mesh);
+
     // buffer operations
     void _clear_buffers();
     void _build_buffers();
@@ -126,6 +134,71 @@ private:
 
     void reposition_vertices(MFloatPointArray& vertex_array);
 };
+
+// ---template functions---
+
+struct _AddUvPoly
+{
+    template<typename T, typename U, typename V>
+    inline void operator()(MIntArray& uvIds, T&& row_length, U&& l_pos, V&& h_pos)
+    {
+        uvIds.append(l_pos);
+        uvIds.append(l_pos + 1);
+        uvIds.append((row_length * (h_pos + 1)) + l_pos + 1);
+        uvIds.append((row_length * (h_pos + 1)) + l_pos);
+    }
+};
+
+struct _AddUvPolyReversed
+{
+    template<typename T, typename U, typename V>
+    inline void operator()(MIntArray& uvIds, T&& row_length, U&& l_pos, V&& h_pos)
+    {
+        uvIds.append(l_pos);
+        uvIds.append(l_pos + 1);
+        uvIds.append((row_length * (h_pos + 1)) + l_pos + 1);
+        uvIds.append((row_length * (h_pos + 1)) + l_pos);
+    }
+};
+
+template<typename F>
+inline int add_uv_face(MIntArray& uvIds,
+    const unsigned int& sub_length,
+    const unsigned int& sub_height,
+    const unsigned int& offset,
+    F&& function)
+{
+    unsigned int i, j;
+    for (j = 0; j < sub_height + 1; ++j)
+    {
+        for (i = 0; i < sub_length + 1; ++i)
+        {
+            function(
+                uvIds,
+                sub_length + 2,
+                i + offset,
+                j);
+        }
+    }
+    return (sub_height + 2) * (sub_length + 2);
+}
+
+template <typename T>
+inline void add_uv_value(MFloatArray& uList, MFloatArray& vList,
+    T&& u_subdivision, T&& v_subdivision)
+{
+    float u_increment = 1.f / (float)(u_subdivision + 1);
+    float v_increment = 1.f / (float)(v_subdivision + 1);
+    unsigned int i, j;
+    for (j = 0; j < v_subdivision + 2; ++j)
+    {
+        for (i = 0; i < u_subdivision + 2; ++i)
+        {
+            uList.append(u_increment * i);
+            vList.append(v_increment * j);
+        }
+    }
+}
 
 
 #endif // !CUBE_PRIM_H
